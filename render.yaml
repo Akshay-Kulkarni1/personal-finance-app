@@ -1,0 +1,25 @@
+# Render blueprint for the backend (backup deploy; free plan may sleep). Fill secrets in the Render dashboard.
+services:
+  - type: web
+    name: ahead-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: FRONTEND_ORIGINS
+        sync: false  # e.g. https://ahead.vercel.app
+      - key: NESSIE_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: ASR_FUNCTION_ID
+        sync: false
+      - key: TTS_FUNCTION_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

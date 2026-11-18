@@ -1,0 +1,91 @@
+# Optional Render deployment blueprint. Not provisioned or verified by this ZIP.
+# Production startup refuses missing critical settings; create managed PostgreSQL
+# and fill every secret through the Render dashboard/secret manager.
+# The Next.js frontend must be deployed separately with AHEAD_API_INTERNAL_URL.
+services:
+  - type: web
+    name: ahead-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python production_check.py && python -m uvicorn main:app --host 0.0.0.0 --port $PORT --no-access-log
+    healthCheckPath: /ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: AHEAD_ENV
+        value: production
+      - key: AHEAD_DEMO_MODE
+        value: "false"
+      - key: PLAID_ENV
+        value: production
+      # Keep bank linking disabled until provider credentials and staging tests exist.
+      - key: AHEAD_BANK_CONNECTIONS_ENABLED
+        value: "false"
+      - key: APP_DATABASE_URL
+        sync: false
+      - key: AHEAD_ENCRYPTION_KEY
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_WEBHOOK_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: AHEAD_OPS_TOKEN
+        sync: false
+
+  - type: worker
+    name: ahead-bank-sync-worker
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python production_check.py && python worker.py --poll 30
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: AHEAD_ENV
+        value: production
+      - key: AHEAD_DEMO_MODE
+        value: "false"
+      - key: PLAID_ENV
+        value: production
+      # Keep bank linking disabled until provider credentials and staging tests exist.
+      - key: AHEAD_BANK_CONNECTIONS_ENABLED
+        value: "false"
+      - key: APP_DATABASE_URL
+        sync: false
+      - key: AHEAD_ENCRYPTION_KEY
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_WEBHOOK_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: AHEAD_OPS_TOKEN
+        sync: false

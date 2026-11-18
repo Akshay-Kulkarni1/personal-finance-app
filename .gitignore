@@ -1,0 +1,19 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+backend/cache/
+node_modules/
+.next/
+*.zip
+ahead-v1/
+
+# Local application database and secrets
+backend/data/
+backend/*.sqlite3*
+backend/.env
+backups/
+*.eml
+
+# macOS Finder artifacts
+.DS_Store

@@ -4,6 +4,7 @@ import { BellRing, Eye, ShieldCheck } from "lucide-react";
 import { LogoMark } from "./Logo";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth";
 import { PrimaryButton, TextButton } from "./ui";
 
 const KEY = "ahead_onboarded";
@@ -17,9 +18,10 @@ export function Onboarding() {
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
   const path = usePathname();
+  const { user, demoMode } = useAuth();
 
   useEffect(() => {
-    if (path === "/login") return setOpen(false); // the login screen shows first; cards follow sign-in
+    if (path === "/login" || !user || !demoMode) return setOpen(false); // the login screen shows first; cards follow sign-in
     try {
       if (!localStorage.getItem(KEY)) {
         setI(0);
@@ -28,7 +30,7 @@ export function Onboarding() {
     } catch {
       /* storage blocked: skip onboarding rather than nag every load */
     }
-  }, [path]);
+  }, [path, user, demoMode]);
 
   function finish() {
     try {

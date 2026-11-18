@@ -13,6 +13,21 @@ import voice  # noqa: E402
 c = TestClient(main.app)
 
 
+@pytest.fixture(autouse=True)
+def authenticated_demo(monkeypatch, tmp_path):
+    monkeypatch.setenv("AHEAD_DEMO_MODE", "true")
+    monkeypatch.setenv("AHEAD_ENV", "development")
+    monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "voice-auth.sqlite3"))
+    monkeypatch.delenv("APP_DATABASE_URL", raising=False)
+    c.cookies.clear()
+    c.headers.pop("X-CSRF-Token", None)
+    session = c.post("/auth/register", json={"email":"voice@example.com", "password":"VoiceAccountPassword_123"})
+    assert session.status_code == 201
+    c.headers["X-CSRF-Token"] = session.json()["csrf_token"]
+    yield
+    c.cookies.clear()
+
+
 def test_safe_to_speak():
     assert "4111" not in voice.safe_to_speak("Card 4111 1111 1111 1111 is fine.")
     assert voice.safe_to_speak("One. Two. Three.") == "One. Two."

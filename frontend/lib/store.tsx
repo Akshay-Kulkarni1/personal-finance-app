@@ -1,6 +1,7 @@
 "use client";
 import { MotionConfig } from "framer-motion";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useAuth } from "./auth";
 import { api, type Alert, type Forecast, type Overview, type Summary } from "./api";
 
 type Store = {
@@ -19,6 +20,7 @@ type Store = {
 const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { user, demoMode, loading: authLoading } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -43,8 +45,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (authLoading) return;
+    if (user && demoMode) { refresh(); }
+    else { setSummary(null); setOverview(null); setForecast(null); setAlerts([]); setLoading(false); }
+  }, [refresh, user, demoMode, authLoading]);
 
   return (
     <Ctx.Provider value={{ summary, forecast, overview, alerts, error, loading, refresh, setAlerts, toast, showToast }}>

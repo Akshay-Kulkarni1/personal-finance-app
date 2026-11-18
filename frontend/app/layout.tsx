@@ -4,6 +4,7 @@ import { Nav } from "@/components/Nav";
 import { Onboarding } from "@/components/Onboarding";
 import { Toast } from "@/components/Toast";
 import { StoreProvider } from "@/lib/store";
+import { AuthGate, AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 // DIN Pro is licensed (not bundled); Barlow is a free DIN-style face used when DIN Pro isn't installed.
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={brand.variable}>
       <body>
-        <StoreProvider>
+        <AuthProvider><StoreProvider><AuthGate>
           <Nav />
           <main className="mx-auto max-w-[1100px] px-4 pb-16 pt-6 sm:px-8 sm:pt-8">
             {children}
@@ -26,7 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </main>
           <Toast />
           <Onboarding />
-        </StoreProvider>
+        </AuthGate></StoreProvider></AuthProvider>
       </body>
     </html>
   );

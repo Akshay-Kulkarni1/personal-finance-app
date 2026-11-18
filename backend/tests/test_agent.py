@@ -88,10 +88,16 @@ def test_failed_bundle_rolls_back():
     assert ledger.load()["balances"] == pytest.approx(before)
 
 
-def test_sse_stream():
+def test_sse_stream(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import main
-    with TestClient(main.app).stream("GET", "/ask/stream", params={"q": "Am I okay?"}) as resp:
+    monkeypatch.setenv("AHEAD_DEMO_MODE", "true")
+    monkeypatch.setenv("AHEAD_ENV", "development")
+    monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "sse-auth.sqlite3"))
+    monkeypatch.delenv("APP_DATABASE_URL", raising=False)
+    client = TestClient(main.app)
+    assert client.post("/auth/register", json={"email":"sse@example.com", "password":"SseAccountPassword_123"}).status_code == 201
+    with client.stream("GET", "/ask/stream", params={"q": "Am I okay?"}) as resp:
         events = [json.loads(line[6:]) for line in resp.iter_lines() if line.startswith("data: ")]
     assert events[0]["type"] == "step" and events[-1]["type"] == "answer"
 

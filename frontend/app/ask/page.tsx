@@ -52,7 +52,7 @@ export default function Ask() {
     setBusy(true);
     const uid = ++idRef.current, aid = ++idRef.current;
     setMsgs((m) => [...m, { id: uid, role: "user", text: q }, { id: aid, role: "ahead", text: "", steps: [] }]);
-    const es = new EventSource(`${API}/ask/stream?q=${encodeURIComponent(q)}`);
+    const es = new EventSource(`${API}/ask/stream?q=${encodeURIComponent(q)}`, { withCredentials: true });
     const steps: string[] = [];
     es.onmessage = (ev) => {
       const e = JSON.parse(ev.data);

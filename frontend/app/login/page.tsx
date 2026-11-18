@@ -3,21 +3,35 @@ import { Lock } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 import { PrimaryButton } from "@/components/ui";
+import { useAuth } from "@/lib/auth";
 
-/** Demo sign-in screen. Not real auth: any input (or none) signs in as Maya. */
 export default function Login() {
   const router = useRouter();
-  const [email, setEmail] = useState("maya@example.com");
+  const { signIn, completeMfa } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [challenge, setChallenge] = useState("");
+  const [code, setCode] = useState("");
 
-  function signIn(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setError("");
     try {
-      localStorage.removeItem("ahead_onboarded"); // replay the 3 intro cards after each demo sign-in
-    } catch {}
-    setTimeout(() => router.push("/"), 400);
+      if (challenge) {
+        await completeMfa(challenge, code);
+        router.replace("/");
+      } else {
+        const result = await signIn(email, password, register);
+        if (result && result.mfa_required) { setChallenge(result.challenge); setPassword(""); }
+        else router.replace("/");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to sign in");
+    } finally { setBusy(false); }
   }
 
   return (
@@ -26,27 +40,39 @@ export default function Login() {
         <div className="mb-8 flex flex-col items-center text-center">
           <LogoMark size={56} className="drop-shadow-[0_10px_24px_rgba(21,24,27,0.25)]" />
           <h1 className="mt-4 text-[28px] font-bold tracking-tight">Welcome to Ahead</h1>
-          <p className="mt-1 text-[15px] text-muted">Banks show your past. Ahead shows what&apos;s next.</p>
+          <p className="mt-1 text-[15px] text-muted">Your money, a little clearer.</p>
         </div>
-        <form onSubmit={signIn} className="card space-y-4 p-6 sm:p-8">
-          <div>
+        <form onSubmit={submit} className="card space-y-4 p-6 sm:p-8">
+          <h2 className="text-[18px] font-semibold">{challenge ? "Authenticator verification" : register ? "Create your account" : "Sign in"}</h2>
+          {challenge ? <p className="text-sm text-muted">Enter your 6-digit authenticator code or a one-time recovery code.</p> : null}
+          {!challenge && <div>
             <label htmlFor="email" className="text-[13px] font-medium text-muted">Email</label>
-            <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off"
+            <input id="email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email"
               className="mt-1 w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-[15px] outline-none focus:border-accent" />
-          </div>
-          <div>
-            <label htmlFor="pw" className="text-[13px] font-medium text-muted">Password</label>
-            <input id="pw" type="password" defaultValue="demo-password" autoComplete="off"
+          </div>}
+          {!challenge && <div>
+            <label htmlFor="pw" className="text-[13px] font-medium text-muted">Password (12+ characters)</label>
+            <input id="pw" required minLength={12} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"}
               className="mt-1 w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-[15px] outline-none focus:border-accent" />
-          </div>
+          </div>}
+          {challenge && <div>
+            <label htmlFor="otp" className="text-[13px] font-medium text-muted">Authentication code</label>
+            <input id="otp" required autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value.trim())} className="mt-1 w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-[15px] outline-none focus:border-accent" />
+          </div>}
+          {error && <p role="alert" className="text-sm text-act">{error}</p>}
           <PrimaryButton type="submit" disabled={busy} className="w-full justify-center">
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? "One moment…" : challenge ? "Verify and sign in" : register ? "Create account" : "Sign in"}
           </PrimaryButton>
-          <p className="text-center text-[12px] text-faint">Demo only. Any email works.</p>
+          <button type="button" onClick={() => {
+            if (challenge) { setChallenge(""); setCode(""); }
+            else setRegister(!register);
+            setError("");
+          }} className="w-full text-center text-[13px] text-muted hover:text-ink">
+            {challenge ? "Back to sign in" : register ? "Already have an account? Sign in" : "New to Ahead? Create an account"}
+          </button>
+          {!register && !challenge && <Link href="/forgot-password" className="block text-center text-[13px] text-muted underline">Forgot password?</Link>}
         </form>
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-[13px] text-muted">
-          <Lock size={13} strokeWidth={1.75} aria-hidden /> Nothing moves without your OK
-        </p>
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-[13px] text-muted"><Lock size={13} aria-hidden /> Secure sign-in · No demo passwords</p>
       </div>
     </div>
   );

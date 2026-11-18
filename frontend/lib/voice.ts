@@ -1,5 +1,5 @@
 "use client";
-import { API } from "./api";
+import { API, getCsrfToken } from "./api";
 
 /** Voice I/O. Uses Nemotron (server) when available, else the browser's own speech APIs. */
 
@@ -13,7 +13,7 @@ let status: { asr: boolean; tts: boolean } | null = null;
 export async function voiceStatus() {
   if (status) return status;
   try {
-    status = await fetch(`${API}/voice/status`).then((r) => r.json());
+    status = await fetch(`${API}/voice/status`, { credentials: "include" }).then((r) => r.json());
   } catch {
     status = { asr: false, tts: false };
   }
@@ -44,7 +44,7 @@ export async function listen(onPartial: (t: string) => void): Promise<{ stop: ()
         try {
           const fd = new FormData();
           fd.append("audio", new Blob(chunks, { type: rec.mimeType }), "speech.webm");
-          const r = await fetch(`${API}/voice`, { method: "POST", body: fd });
+          const r = await fetch(`${API}/voice`, { method: "POST", credentials: "include", headers: { "X-CSRF-Token": getCsrfToken() }, body: fd });
           if (!r.ok) throw new Error("asr");
           const { transcript } = await r.json();
           onPartial(transcript);
@@ -85,7 +85,7 @@ export async function speak(text: string): Promise<void> {
   const s = await voiceStatus();
   if (s.tts) {
     try {
-      const r = await fetch(`${API}/tts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const r = await fetch(`${API}/tts`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() }, body: JSON.stringify({ text }) });
       if (!r.ok) throw new Error("tts");
       const url = URL.createObjectURL(await r.blob());
       const audio = new Audio(url);

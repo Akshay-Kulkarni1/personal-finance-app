@@ -28,12 +28,15 @@ def status() -> dict:
 
 
 def _auth(function_env: str):
-    import riva.client
     # each speech model may have its own key (ASR_API_KEY / TTS_API_KEY); fall back to the main one
     fid = os.getenv(function_env)
     key = os.getenv(function_env.replace("FUNCTION_ID", "API_KEY")) or os.getenv("NVIDIA_API_KEY")
     if not (fid and key):
         raise VoiceUnavailable(f"{function_env} or NVIDIA_API_KEY not set")
+    try:
+        import riva.client
+    except ImportError as e:
+        raise VoiceUnavailable("NVIDIA Riva client is not installed") from e
     return riva.client.Auth(uri=GRPC_URI, use_ssl=True,
                             metadata_args=[["function-id", fid], ["authorization", f"Bearer {key}"]])
 
@@ -64,9 +67,10 @@ def to_wav16k(audio: bytes) -> bytes:
 
 
 def transcribe(audio: bytes) -> str:
-    import riva.client
     wav = to_wav16k(audio)
-    asr = riva.client.ASRService(_auth("ASR_FUNCTION_ID"))
+    auth = _auth("ASR_FUNCTION_ID")
+    import riva.client
+    asr = riva.client.ASRService(auth)
     cfg = riva.client.RecognitionConfig(encoding=riva.client.AudioEncoding.LINEAR_PCM, sample_rate_hertz=16000,
                                         language_code="en-US", max_alternatives=1, audio_channel_count=1,
                                         enable_automatic_punctuation=True)
@@ -92,8 +96,9 @@ def pcm_to_wav(pcm: bytes, rate: int = TTS_RATE) -> bytes:
 
 
 def speak(text: str) -> bytes:
+    auth = _auth("TTS_FUNCTION_ID")
     import riva.client
-    tts = riva.client.SpeechSynthesisService(_auth("TTS_FUNCTION_ID"))
+    tts = riva.client.SpeechSynthesisService(auth)
     clean = safe_to_speak(text)
     resp = _retry(lambda: tts.synthesize(clean, voice_name=TTS_VOICE, language_code="en-US",
                                          sample_rate_hz=TTS_RATE, future=True).result(timeout=TIMEOUT))

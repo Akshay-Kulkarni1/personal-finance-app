@@ -13,6 +13,8 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install -r backend/requirements.txt
+      - name: Reject tracked local secrets and databases
+        run: python scripts/check-repo-safety.py
       - run: python -m pytest -q backend/tests
       - name: Phase 0 credential-free acceptance (isolated API, worker, SQLite restore)
         run: AHEAD_VERIFY_PYTHON="$(command -v python)" ./scripts/verify-phase0-offline.sh

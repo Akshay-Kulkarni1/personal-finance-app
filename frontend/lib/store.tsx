@@ -44,14 +44,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const showDemo = !authLoading && !!user && demoMode;
   useEffect(() => {
-    if (authLoading) return;
-    if (user && demoMode) { refresh(); }
-    else { setSummary(null); setOverview(null); setForecast(null); setAlerts([]); setLoading(false); }
-  }, [refresh, user, demoMode, authLoading]);
+    if (!showDemo) return;
+    let active = true;
+    Promise.all([api.summary(), api.forecast(), api.alerts(), api.overview()])
+      .then(([s, f, a, o]) => {
+        if (!active) return;
+        setSummary(s); setForecast(f); setAlerts(a.alerts); setOverview(o);
+        setError(null);
+      })
+      .catch(() => { if (active) setError("We couldn't reach your money right now. Check your connection and try again."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [showDemo]);
 
   return (
-    <Ctx.Provider value={{ summary, forecast, overview, alerts, error, loading, refresh, setAlerts, toast, showToast }}>
+    <Ctx.Provider value={{ summary: showDemo ? summary : null, forecast: showDemo ? forecast : null,
+      overview: showDemo ? overview : null, alerts: showDemo ? alerts : [], error: showDemo ? error : null,
+      loading: showDemo ? loading : false, refresh, setAlerts, toast, showToast }}>
       <MotionConfig reducedMotion="user">{children}</MotionConfig>
     </Ctx.Provider>
   );

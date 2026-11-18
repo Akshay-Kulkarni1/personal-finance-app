@@ -20,17 +20,22 @@ export function Onboarding() {
   const path = usePathname();
   const { user, demoMode } = useAuth();
 
+  const eligible = path !== "/login" && !!user && demoMode;
   useEffect(() => {
-    if (path === "/login" || !user || !demoMode) return setOpen(false); // the login screen shows first; cards follow sign-in
-    try {
-      if (!localStorage.getItem(KEY)) {
-        setI(0);
-        setOpen(true);
+    let active = true;
+    if (eligible) {
+      try {
+        const show = !localStorage.getItem(KEY);
+        Promise.resolve().then(() => {
+          if (!active) return;
+          if (show) { setI(0); setOpen(true); }
+        });
+      } catch {
+        /* storage blocked: skip onboarding rather than nag every load */
       }
-    } catch {
-      /* storage blocked: skip onboarding rather than nag every load */
     }
-  }, [path, user, demoMode]);
+    return () => { active = false; };
+  }, [eligible]);
 
   function finish() {
     try {
@@ -50,7 +55,7 @@ export function Onboarding() {
     return () => window.removeEventListener("keydown", k);
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !eligible) return null;
   const last = i === CARDS.length - 1;
   const { Icon, title, sub } = CARDS[i];
 

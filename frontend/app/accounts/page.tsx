@@ -28,7 +28,20 @@ export default function Accounts() {
     setConnections(c.connections); setAccounts(a.accounts);
     setConfigured(status.configured); setEnvironment(status.environment); setWebhookReady(status.webhook_configured);
   }, []);
-  useEffect(() => { refresh().catch(e => setError(String(e))); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    Promise.all([api.bankConnections(), api.bankAccounts(), api.bankStatus()])
+      .then(([c, a, status]) => {
+        if (!active) return;
+        setConnections(c.connections);
+        setAccounts(a.accounts);
+        setConfigured(status.configured);
+        setEnvironment(status.environment);
+        setWebhookReady(status.webhook_configured);
+      })
+      .catch(e => { if (active) setError(String(e)); });
+    return () => { active = false; };
+  }, []);
 
   async function connect() {
     if (!window.Plaid) { setError("Plaid Link hasn't loaded yet. Please try again."); return; }

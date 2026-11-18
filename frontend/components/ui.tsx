@@ -106,8 +106,7 @@ export function CountMoney({ value, cents = false }: { value: number; cents?: bo
   const ref = useRef<HTMLSpanElement>(null);
   const seen = useInView(ref, { once: true });
   useEffect(() => {
-    if (reduce) return setShown(value);
-    if (!seen) return;
+    if (reduce || !seen) return;
     const from = shown;
     const start = performance.now();
     let raf = 0;
@@ -120,8 +119,9 @@ export function CountMoney({ value, cents = false }: { value: number; cents?: bo
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, reduce, seen]);
-  const s = Math.abs(shown).toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
-  return <span ref={ref}>{shown < 0 ? "-" : ""}${s}</span>;
+  const visible = reduce ? value : shown;
+  const s = Math.abs(visible).toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+  return <span ref={ref}>{visible < 0 ? "-" : ""}${s}</span>;
 }
 
 /** Animated count-up for numbers like the score. */
@@ -129,7 +129,7 @@ export function CountUp({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
   const reduce = useReducedMotion();
   useEffect(() => {
-    if (reduce) return setShown(value);
+    if (reduce) return;
     const from = shown;
     const start = performance.now();
     let raf = 0;
@@ -142,7 +142,7 @@ export function CountUp({ value }: { value: number }) {
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, reduce]);
-  return <>{shown}</>;
+  return <>{reduce ? value : shown}</>;
 }
 
 /** Text that flips when it changes (safe-until date). */

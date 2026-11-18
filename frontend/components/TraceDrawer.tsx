@@ -20,15 +20,25 @@ const TOOL_NAMES: Record<string, string> = {
 
 /** "How I figured this out": the one place tool/vendor details appear. */
 export function TraceDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
+  return (
+    <Drawer open={!!id} onClose={onClose} title="How I figured this out">
+      {id && <TraceContent key={id} id={id} />}
+    </Drawer>
+  );
+}
+
+function TraceContent({ id }: { id: string }) {
   const [t, setT] = useState<Trace | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => {
-    setT(null);
-    setErr(false);
-    if (id) api.trace(id).then(setT).catch(() => setErr(true));
+    let active = true;
+    api.trace(id)
+      .then(result => { if (active) setT(result); })
+      .catch(() => { if (active) setErr(true); });
+    return () => { active = false; };
   }, [id]);
   return (
-    <Drawer open={!!id} onClose={onClose} title="How I figured this out">
+    <>
       {err && <p className="text-[15px] text-muted">This explanation isn&apos;t available anymore.</p>}
       {!t && !err && <p className="shimmer text-[15px]">Loading steps…</p>}
       {t && (
@@ -59,6 +69,6 @@ export function TraceDrawer({ id, onClose }: { id: string | null; onClose: () =>
           </p>
         </div>
       )}
-    </Drawer>
+    </>
   );
 }

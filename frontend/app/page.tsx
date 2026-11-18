@@ -7,10 +7,18 @@ import { BudgetTile, CardTile, DebtTile, FutureYouCard } from "@/components/Tile
 import { Card, CountMoney, CountUp, Flip, PrimaryButton, reveal, TextButton, Why } from "@/components/ui";
 import { api, fmtDate, usd, type Forecast, type Summary } from "@/lib/api";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
+import { LiveHome } from "@/components/LiveHome";
 
 const VIEW = { once: true, amount: 0.2 } as const;
 
 export default function Home() {
+  const { demoMode } = useAuth();
+  if (!demoMode) return <LiveHome />;
+  return <DemoHome />;
+}
+
+function DemoHome() {
   const { summary: s, overview: o, forecast: f, loading, error, refresh } = useStore();
   const [simulating, setSimulating] = useState(false);
 

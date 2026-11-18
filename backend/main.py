@@ -1,26 +1,156 @@
 import json
+import hmac
 import os
 import queue
+import logging
+import time
 import threading
 
 import uuid
 from datetime import date
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 import agent
+import appdb
+import auth
+import bank
 import eyes
 import ledger
+import privacy
+import production_check
 import tools
 import voice
 
-app = FastAPI(title="Ahead")
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(","),
-                   allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Ahead", docs_url=None if os.getenv("AHEAD_ENV") == "production" else "/docs",
+              redoc_url=None if os.getenv("AHEAD_ENV") == "production" else "/redoc",
+              openapi_url=None if os.getenv("AHEAD_ENV") == "production" else "/openapi.json")
+logger = logging.getLogger("ahead.http")
+# Auth and banking are isolated from the legacy shared demo ledger.
+app.include_router(auth.router)
+app.include_router(bank.router)
+app.include_router(privacy.router)
+
+
+def _demo_mode():
+    return os.getenv("AHEAD_DEMO_MODE", "false").lower() == "true" and os.getenv("AHEAD_ENV") != "production"
+
+
+def _allowed_origins():
+    origins = [x.strip() for x in os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",") if x.strip()]
+    # Local development can use either IPv4 loopback spelling. Production is
+    # strictly the configured allowlist; no wildcard or arbitrary 127.* origin.
+    if os.getenv("AHEAD_ENV") != "production":
+        origins = list(dict.fromkeys(origins + ["http://localhost:3000", "http://127.0.0.1:3000"]))
+    return origins
+
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+
+@app.get("/ready")
+def readiness():
+    """For deployment probes: validate database availability without disclosing secrets."""
+    try:
+        if os.getenv("AHEAD_ENV") == "production" and production_check.configuration_issues():
+            return JSONResponse({"ready": False}, status_code=503)
+        with appdb.connect() as c:
+            appdb.execute(c, "SELECT 1")
+    except Exception:
+        return JSONResponse({"ready": False}, status_code=503)
+    return {"ready": True}
+
+
+@app.get("/ops/status")
+def operational_status(request: Request):
+    """Minimal operator-only worker status. No user identifiers or bank data.
+
+    Supply a separate random 32+ character AHEAD_OPS_TOKEN (HTTPS only when hosted).
+    Avoid exposing counts about users to an unauthenticated dashboard.
+    """
+    expected = os.getenv("AHEAD_OPS_TOKEN", "")
+    supplied = request.headers.get("X-Ahead-Ops-Token", "")
+    if len(expected) < 32 or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(404, "Not found")
+    now = int(time.time())
+    with appdb.connect() as c:
+        counts = appdb.execute(c, "SELECT status,COUNT(*) AS n FROM app_bank_sync_jobs GROUP BY status").fetchall()
+        overdue = appdb.execute(c, """SELECT COUNT(*) AS n FROM app_bank_sync_jobs
+            WHERE (status IN ('queued','retry') AND next_run_at<?)
+               OR (status='running' AND lease_until<?)""", (now - 300, now)).fetchone()
+        synced = appdb.execute(c, "SELECT MAX(last_success_at) AS last_sync FROM app_bank_sync_jobs").fetchone()
+        observed = appdb.execute(c, "SELECT last_seen_at FROM app_worker_heartbeat WHERE service='bank-sync'").fetchone()
+    # Recent observation does not guarantee the worker is currently running.
+    last_seen = observed["last_seen_at"] if observed else None
+    by_status = {r["status"]: r["n"] for r in counts}
+    return {"database": "ok", "sync_jobs": by_status,
+            "dead_letter_jobs": by_status.get("dead", 0),
+            "overdue_jobs": overdue["n"], "last_success_at": synced["last_sync"],
+            "worker_last_seen_at": last_seen,
+            "worker_observed_recently": bool(last_seen and now - 120 <= last_seen <= now + 30)}
+
+
+@app.get("/config")
+def runtime_config():
+    return {"demo_mode": _demo_mode()}
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next):
+    started = time.monotonic()
+    request_id = str(uuid.uuid4())
+    path = request.url.path
+    origins = _allowed_origins()
+    origin = request.headers.get("origin")
+    response = None
+    if request.method != "OPTIONS":
+        if request.method not in ("GET", "HEAD") and origin and origin not in origins:
+            response = JSONResponse({"detail": "Origin not allowed"}, status_code=403)
+        else:
+            public = path in (
+                "/health", "/ready", "/config", "/auth/register", "/auth/login",
+                "/auth/mfa/complete", "/auth/forgot-password", "/auth/reset-password",
+                "/auth/verify-email", "/bank/webhook", "/ops/status"
+            )
+            public = public or (os.getenv("AHEAD_ENV") != "production" and path in ("/docs", "/redoc", "/openapi.json"))
+            if not public:
+                try:
+                    who = auth.require(request)
+                except HTTPException:
+                    response = JSONResponse({"detail": "Sign in to continue"}, status_code=401)
+                if response is None and request.method not in ("GET", "HEAD") and not auth.csrf_valid(request, who):
+                    response = JSONResponse({"detail": "Security token expired. Refresh and try again."}, status_code=403)
+                if response is None and path.startswith("/bank/") and os.getenv("AHEAD_ENV") == "production" and not who["email_verified_at"]:
+                    response = JSONResponse({"detail": "Verify your email before connecting banks"}, status_code=403)
+                # Never serve the legacy shared demo ledger as user financial data.
+                if response is None and not path.startswith(("/auth/", "/bank/")) and not _demo_mode():
+                    response = JSONResponse({"detail": "This demo-only feature is not yet connected to your personal financial data"}, status_code=503)
+    if response is None:
+        response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "geolocation=()"
+    if path.startswith(("/auth/", "/bank/", "/ops/")):
+        response.headers["Cache-Control"] = "no-store"
+    if os.getenv("AHEAD_ENV") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    logger.info("request_id=%s method=%s path=%s status=%s duration_ms=%.1f",
+                request_id, request.method, path, response.status_code, (time.monotonic()-started)*1000)
+    return response
+
+
+app.add_middleware(CORSMiddleware,
+                   allow_origins=_allowed_origins(),
+                   allow_credentials=True, allow_methods=["GET", "POST", "OPTIONS"],
+                   allow_headers=["Content-Type", "X-CSRF-Token"])
 
 
 class Ask(BaseModel):

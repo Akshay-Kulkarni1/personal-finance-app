@@ -1,4 +1,7 @@
-export const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Same-origin API gateway; works with either localhost or 127.0.0.1 and
+// avoids cross-origin cookies, CORS and mixed-network-family issues.
+// The server-side Next.js rewrite is configured in next.config.ts.
+export const API = "/api/ahead";
 
 export type Indicator = { points: number; value: number; why: string };
 export type Fix = {
@@ -100,20 +103,70 @@ export type Trace = {
   ms: number;
 };
 
+let csrfToken: string | null = null;
+export function setCsrfToken(value: string | null) { csrfToken = value; }
+export function getCsrfToken() { return csrfToken ?? ""; }
+export type User = { id: string; email: string; email_verified: boolean; mfa_enabled: boolean };
+export type AuthResponse = { user: User; csrf_token: string };
+export type MfaChallenge = { mfa_required: true; challenge: string };
+export type UserSession = { id: string; current: boolean; created_at: number; expires_at: number };
+export type BankConnection = { id: string; institution_id: string | null; institution_name: string | null; status: string; created_at: number; updated_at: number; last_synced_at: number | null; sync_status: string | null; next_sync_at: number | null; sync_error: string | null };
+export type BankAccount = { id: string; connection_id: string; name: string; mask: string | null; type: string | null; subtype: string | null; currency: string | null; current_balance: number | null; available_balance: number | null; updated_at: number };
+export type BankTransaction = { id: string; account_id: string; date: string; amount: number; amount_decimal: string | null; currency: string | null; pending_transaction_id: string | null; name: string; merchant: string | null; category: string | null; pending: number };
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${API}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    cache: "no-store",
-  });
+  let r: Response;
+  try {
+    r = await fetch(`${API}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...(csrfToken && init?.method && init.method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}), ...(init?.headers ?? {}) },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("Ahead could not reach its API. Check that the backend is running and run ./scripts/doctor-local.sh.");
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
-    throw new Error(body.detail ?? "Something went wrong. Try again.");
+    const detail = typeof body.detail === "string" ? body.detail : null;
+    if (r.status >= 500 && !detail) {
+      throw new Error("Ahead's API isn't available yet. Check the backend terminal or run ./scripts/doctor-local.sh.");
+    }
+    throw new Error(detail ?? "Something went wrong. Try again.");
   }
   return r.json();
 }
 
 export const api = {
+  config: () => call<{ demo_mode: boolean }>("/config"),
+  me: () => call<AuthResponse>("/auth/me"),
+  register: (email: string, password: string) => call<AuthResponse>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) => call<AuthResponse | MfaChallenge>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  completeMfa: (challenge: string, code: string) => call<AuthResponse>("/auth/mfa/complete", { method: "POST", body: JSON.stringify({ challenge, code }) }),
+  forgotPassword: (email: string) => call<{ ok: boolean }>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, password: string) => call<{ ok: boolean }>("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) }),
+  verifyEmail: (token: string) => call<{ ok: boolean }>("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) }),
+  resendVerification: () => call<{ ok: boolean }>("/auth/resend-verification", { method: "POST" }),
+  mfaSetup: (password: string) => call<{ secret: string; otpauth_uri: string }>("/auth/mfa/setup", { method: "POST", body: JSON.stringify({ password }) }),
+  mfaEnable: (code: string) => call<{ ok: boolean; recovery_codes: string[] }>("/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }),
+  mfaDisable: (password: string, code: string) => call<{ ok: boolean }>("/auth/mfa/disable", { method: "POST", body: JSON.stringify({ password, code }) }),
+  sessions: () => call<{ sessions: UserSession[] }>("/auth/sessions"),
+  revokeSession: (session_id: string) => call<{ ok: boolean }>("/auth/sessions/revoke", { method: "POST", body: JSON.stringify({ session_id }) }),
+  logout: () => call<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  deleteAccount: (password: string, code?: string) => call<{ deleted: boolean }>("/auth/privacy/delete", { method: "POST", body: JSON.stringify({ password, code: code || null }) }),
+  bankStatus: () => call<{ configured: boolean; environment: string; webhook_configured: boolean }>("/bank/status"),
+  bankLinkToken: () => call<{ link_token: string }>("/bank/link-token", { method: "POST" }),
+  bankUpdateLinkToken: (connection_id: string) => call<{ link_token: string }>("/bank/update-link-token", { method: "POST", body: JSON.stringify({ connection_id }) }),
+  bankUpdateComplete: (connection_id: string) => call<{ queued: boolean }>("/bank/update-complete", { method: "POST", body: JSON.stringify({ connection_id }) }),
+  bankExchange: (public_token: string, institution_id?: string, institution_name?: string) =>
+    call<{ connection_id: string; accounts_connected: number }>("/bank/exchange", { method: "POST", body: JSON.stringify({ public_token, institution_id, institution_name }) }),
+  bankConnections: () => call<{ connections: BankConnection[] }>("/bank/connections"),
+  bankAccounts: () => call<{ accounts: BankAccount[] }>("/bank/accounts"),
+  bankTransactions: () => call<{ transactions: BankTransaction[] }>("/bank/transactions"),
+  bankSync: (connection_id: string) => call<{ ok: boolean; added: number; modified: number; removed: number }>("/bank/sync", { method: "POST", body: JSON.stringify({ connection_id }) }),
+  bankConfigureWebhook: (connection_id: string) => call<{ configured: boolean }>("/bank/webhook/configure", { method: "POST", body: JSON.stringify({ connection_id }) }),
+  bankFireTestWebhook: (connection_id: string) => call<{ requested: boolean }>("/bank/sandbox-fire-webhook", { method: "POST", body: JSON.stringify({ connection_id }) }),
+  bankDisconnect: (connection_id: string) => call<{ ok: boolean }>("/bank/disconnect", { method: "POST", body: JSON.stringify({ connection_id }) }),
   summary: () => call<Summary>("/summary"),
   forecast: () => call<Forecast>("/forecast"),
   overview: () => call<Overview>("/overview"),
@@ -146,7 +199,7 @@ export const api = {
   upload: async (file: File | null): Promise<UploadResult> => {
     const fd = new FormData();
     if (file) fd.append("file", file);
-    const r = await fetch(`${API}/upload${file ? "" : "?sample=true"}`, { method: "POST", body: fd, cache: "no-store" });
+    const r = await fetch(`${API}/upload${file ? "" : "?sample=true"}`, { method: "POST", body: fd, credentials: "include", headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {}, cache: "no-store" });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(r.status === 503 ? "I can't read files right now. Try the sample instead." : body.detail ?? "Something went wrong. Try again.");
     return body;
@@ -169,4 +222,24 @@ export function usd(n: number, cents = false) {
     maximumFractionDigits: cents ? 2 : 0,
   });
   return `${n < 0 ? "-" : ""}$${s}`;
+}
+
+// Sensitive data is fetched through the same-origin proxy and never sent to a
+// third-party download service. The backend streams the complete JSON export.
+export async function downloadPersonalData(password: string, code?: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${API}/auth/privacy/export`, {
+      method: "POST", credentials: "include", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+      body: JSON.stringify({ password, code: code || null }),
+    });
+  } catch {
+    throw new Error("Ahead could not reach its API. Run ./scripts/doctor-local.sh.");
+  }
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({}));
+    throw new Error(typeof problem.detail === "string" ? problem.detail : "Unable to export your data");
+  }
+  return response.blob();
 }

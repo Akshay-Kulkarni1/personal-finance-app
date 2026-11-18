@@ -8,3 +8,6 @@ pandas
 pytest
 nvidia-riva-client
 python-multipart
+argon2-cffi
+cryptography
+PyJWT[crypto]>=2.9,<3

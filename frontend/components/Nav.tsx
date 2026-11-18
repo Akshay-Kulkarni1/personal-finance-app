@@ -1,13 +1,15 @@
 "use client";
-import { Lock, LogOut } from "lucide-react";
+import { Lock, LogOut, ShieldCheck } from "lucide-react";
 import { LogoMark } from "./Logo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 
 const TABS = [
   { href: "/", label: "Home" },
+  { href: "/accounts", label: "Banks" },
   { href: "/alerts", label: "Alerts" },
   { href: "/plan", label: "Plan" },
   { href: "/ask", label: "Ask" },
@@ -16,6 +18,7 @@ const TABS = [
 export function Nav() {
   const path = usePathname();
   const { alerts } = useStore();
+  const { user, demoMode, signOut } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 4);
@@ -23,6 +26,7 @@ export function Nav() {
     window.addEventListener("scroll", on, { passive: true });
     return () => window.removeEventListener("scroll", on);
   }, []);
+  if (!user || path === "/login") return null;
   return (
     <header className={`sticky top-0 z-30 border-b border-line bg-glass backdrop-blur-xl transition-shadow duration-300 ${scrolled ? "shadow-[0_6px_20px_rgba(20,23,28,0.07)]" : ""}`}>
       <div className="mx-auto flex max-w-[1100px] items-center gap-4 px-4 py-3 sm:px-8">
@@ -32,7 +36,7 @@ export function Nav() {
         </Link>
         <nav aria-label="Main" className="mx-auto min-w-0">
           <ul className="flex gap-1 rounded-full bg-bg p-1">
-            {TABS.map(({ href, label }) => {
+            {TABS.filter(({ href }) => demoMode || href === "/" || href === "/accounts").map(({ href, label }) => {
               const active = href === "/" ? path === "/" : path.startsWith(href);
               return (
                 <li key={href}>
@@ -59,9 +63,10 @@ export function Nav() {
         <span className="hidden items-center gap-1.5 text-[13px] text-muted md:flex">
           <Lock size={13} strokeWidth={1.75} aria-hidden /> Nothing moves without your OK
         </span>
-        <Link href="/login" aria-label="Sign out" title="Sign out" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-ink">
+        <Link href="/settings/security" aria-label="Security settings" title="Security settings" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-ink"><ShieldCheck size={17} /></Link>
+        <button type="button" onClick={() => { void signOut().then(() => window.location.assign("/login")); }} aria-label="Sign out" title="Sign out" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-bg hover:text-ink">
           <LogOut size={16} strokeWidth={1.75} />
-        </Link>
+        </button>
       </div>
     </header>
   );

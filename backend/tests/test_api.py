@@ -12,7 +12,16 @@ c = TestClient(main.app)
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("AHEAD_DEMO_MODE", "true")
+    monkeypatch.setenv("AHEAD_ENV", "development")
+    monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "demo-auth.sqlite3"))
+    monkeypatch.delenv("APP_DATABASE_URL", raising=False)
+    c.cookies.clear()
+    c.headers.pop("X-CSRF-Token", None)
+    session = c.post("/auth/register", json={"email":"demo@example.com", "password":"DemoAccountPassword_123"})
+    assert session.status_code == 201
+    c.headers["X-CSRF-Token"] = session.json()["csrf_token"]
     monkeypatch.setattr(ledger, "DATABASE_URL", "")
     monkeypatch.setattr(ledger, "_ids", lambda: {})
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)

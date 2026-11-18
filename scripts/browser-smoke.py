@@ -71,7 +71,7 @@ def run(base):
             page.get_by_label("Email", exact=True).fill(email)
             page.get_by_label("Password (12+ characters)").fill(password)
             page.get_by_role("button", name="Sign in", exact=True).click()
-            expect(page.get_by_role("alert")).to_contain_text("Invalid email or password")
+            expect(page.get_by_text("Invalid email or password", exact=True)).to_be_visible()
             print("PASS: deletion redirects to login and prevents signing in again")
         except Exception:
             # Don't emit private test account details or browser screenshots.

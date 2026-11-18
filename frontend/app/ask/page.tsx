@@ -140,8 +140,8 @@ export default function Ask() {
   }
 
   // Hold to talk (or tap to start, tap again to stop). Tapping while speaking stops the voice.
-  async function micDown() {
-    pressAt.current = Date.now();
+  async function micDown(eventTime: number) {
+    pressAt.current = eventTime;
     if (mode === "speaking") return stopSpeaking();
     if (mode === "listening") return rec.current?.stop();
     if (mode === "thinking" || busy) return;
@@ -161,10 +161,19 @@ export default function Ask() {
       showToast({ text: "I need microphone access to listen. You can type instead." });
     }
   }
-  function micUp() {
-    if (rec.current && Date.now() - pressAt.current > 350) rec.current.stop();
+  function micUp(eventTime: number) {
+    if (rec.current && eventTime - pressAt.current > 350) rec.current.stop();
   }
-  const micProps = { onPointerDown: micDown, onPointerUp: micUp, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (!e.repeat) micDown(); } } };
+  const micProps = {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { void micDown(e.timeStamp); },
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => micUp(e.timeStamp),
+    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (!e.repeat) void micDown(e.timeStamp); }
+    },
+    onKeyUp: (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); micUp(e.timeStamp); }
+    },
+  };
   const modeLabel = { idle: "", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking… tap to stop" }[mode];
 
   return (

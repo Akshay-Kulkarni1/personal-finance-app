@@ -44,8 +44,18 @@ export default function Plan() {
     }
   }, []);
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    Promise.all([api.budget(), api.leaks()])
+      .then(([bd, lk]) => {
+        if (!active) return;
+        setB(bd);
+        setLeaks(lk.leaks);
+        setCancelled(lk.cancelled ?? []);
+        setErr(null);
+      })
+      .catch(() => { if (active) setErr("We couldn't load your plan. Try again."); });
+    return () => { active = false; };
+  }, []);
   const ready = !!(b && leaks && o);
   const [active, setActive] = useState(SECTIONS[0].id);
   // scroll-spy: highlight the section whose top is nearest the middle band of the screen

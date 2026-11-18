@@ -7,10 +7,13 @@ export default function ResetPassword() {
   const [password,setPassword]=useState("");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
-  useEffect(()=>{
-    setToken(new URLSearchParams(window.location.hash.slice(1)).get("token") || "");
-    window.history.replaceState(null,"",window.location.pathname);
-  },[]);
+  useEffect(() => {
+    let active = true;
+    const linkToken = new URLSearchParams(window.location.hash.slice(1)).get("token") || "";
+    window.history.replaceState(null, "", window.location.pathname);
+    Promise.resolve().then(() => { if (active) setToken(linkToken); });
+    return () => { active = false; };
+  }, []);
   return <section className="mx-auto max-w-md card space-y-4 p-7"><h1 className="text-2xl font-bold">Choose a new password</h1>
     <form className="space-y-3" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await api.resetPassword(token,password);setMessage("Password changed. Sign in with your new password.");setToken("");setPassword("");}catch(err){setMessage(err instanceof Error?err.message:"Reset failed");}finally{setBusy(false);}}}>
       <label className="block text-sm">New password (12+ characters)<input minLength={12} required type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 block w-full rounded-xl border border-line bg-bg p-3" /></label>
